@@ -1,0 +1,6 @@
+{
+  "name": "MCS-HOST",
+  "description": "Free hybrid Minecraft Bedrock UDP/RakNet host and remote RCON server command center with Owner/Admin/Moderator shared rooms, Modrinth mods & resource packs, and working world seeds.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

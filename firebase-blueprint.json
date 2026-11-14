@@ -1,0 +1,237 @@
+{
+  "entities": {
+    "ServerRoom": {
+      "title": "ServerRoom",
+      "description": "Shared Minecraft server room configuration with role-based access control, world options, working seed, and moderation lists.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "description": "UID of the room owner." },
+        "staffUids": { "type": "array", "description": "Bounded list of staff UIDs (max 20) with OWNER, ADMIN, or MODERATOR access." },
+        "staffRoles": { "type": "object", "description": "Map of UID to role string: OWNER, ADMIN, or MODERATOR." },
+        "name": { "type": "string", "description": "Server display name." },
+        "motd": { "type": "string", "description": "Server message of the day." },
+        "mode": { "type": "string", "enum": ["LOCAL_BEDROCK", "REMOTE_RCON"] },
+        "edition": { "type": "string", "enum": ["BEDROCK", "JAVA"] },
+        "software": { "type": "string", "enum": ["BEDROCK_HOST", "VANILLA", "PAPER", "PURPUR", "FABRIC", "FORGE", "BEDROCK_DEDICATED"] },
+        "minecraftVersion": { "type": "string" },
+        "host": { "type": "string" },
+        "port": { "type": "integer" },
+        "seed": { "type": "string" },
+        "seedNumeric": { "type": "integer" },
+        "seedLabel": { "type": "string" },
+        "gamemode": { "type": "string", "enum": ["SURVIVAL", "CREATIVE", "ADVENTURE", "SPECTATOR"] },
+        "difficulty": { "type": "string", "enum": ["PEACEFUL", "EASY", "NORMAL", "HARD"] },
+        "maxPlayers": { "type": "integer" },
+        "viewDistance": { "type": "integer" },
+        "simulationDistance": { "type": "integer" },
+        "pvp": { "type": "boolean" },
+        "hardcore": { "type": "boolean" },
+        "allowCheats": { "type": "boolean" },
+        "commandBlocks": { "type": "boolean" },
+        "onlineMode": { "type": "boolean" },
+        "whitelistEnabled": { "type": "boolean" },
+        "resourcePackRequired": { "type": "boolean" },
+        "keepInventory": { "type": "boolean" },
+        "mobGriefing": { "type": "boolean" },
+        "doDaylightCycle": { "type": "boolean" },
+        "doWeatherCycle": { "type": "boolean" },
+        "naturalRegeneration": { "type": "boolean" },
+        "operators": { "type": "array" },
+        "whitelist": { "type": "array" },
+        "bannedPlayers": { "type": "array" },
+        "inviteCode": { "type": "string" },
+        "isPublicInDirectory": { "type": "boolean" },
+        "isOnline": { "type": "boolean" },
+        "playerCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerUid", "staffUids", "staffRoles", "name", "mode", "edition", "software", "minecraftVersion", "host", "port", "createdAt", "updatedAt"]
+    },
+    "RoomRconConfig": {
+      "title": "RoomRconConfig",
+      "description": "Isolated RCON connection port and password accessible only to room Owner and Admins.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string" },
+        "rconPort": { "type": "integer" },
+        "rconPassword": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerUid", "rconPort", "rconPassword", "updatedAt"]
+    },
+    "RoomMember": {
+      "title": "RoomMember",
+      "description": "Authorized staff member inside a ServerRoom.",
+      "type": "object",
+      "properties": {
+        "memberUid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["OWNER", "ADMIN", "MODERATOR"] },
+        "grantCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["memberUid", "displayName", "role", "createdAt", "updatedAt"]
+    },
+    "RoomPack": {
+      "title": "RoomPack",
+      "description": "Mod, plugin, datapack, behavior pack, or resource pack configured for a ServerRoom.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "packType": { "type": "string", "enum": ["RESOURCE_PACK", "BEHAVIOR_PACK", "MOD", "PLUGIN", "DATAPACK"] },
+        "source": { "type": "string", "enum": ["MODRINTH", "LOCAL_FILE"] },
+        "modrinthProjectId": { "type": "string" },
+        "versionNumber": { "type": "string" },
+        "downloadUrl": { "type": "string" },
+        "iconUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "sha256": { "type": "string" },
+        "loader": { "type": "string" },
+        "isEnabled": { "type": "boolean" },
+        "isRequired": { "type": "boolean" },
+        "priority": { "type": "integer" },
+        "addedByUid": { "type": "string" },
+        "addedByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "packType", "source", "isEnabled", "isRequired", "priority", "addedByUid", "addedByName", "createdAt", "updatedAt"]
+    },
+    "WorldBackup": {
+      "title": "WorldBackup",
+      "description": "Saved world configuration and seed snapshot for rollback.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "seed": { "type": "string" },
+        "seedNumeric": { "type": "integer" },
+        "minecraftVersion": { "type": "string" },
+        "software": { "type": "string" },
+        "gamemode": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "packCount": { "type": "integer" },
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "seed", "seedNumeric", "minecraftVersion", "software", "gamemode", "difficulty", "packCount", "createdByUid", "createdByName", "createdAt"]
+    },
+    "RoomCommand": {
+      "title": "RoomCommand",
+      "description": "Queued remote or moderation command dispatched by room staff.",
+      "type": "object",
+      "properties": {
+        "senderUid": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string", "enum": ["OWNER", "ADMIN", "MODERATOR"] },
+        "command": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "EXECUTED", "REJECTED"] },
+        "response": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderUid", "senderName", "senderRole", "command", "status", "createdAt", "updatedAt"]
+    },
+    "RoleGrant": {
+      "title": "RoleGrant",
+      "description": "Shareable access code granting ADMIN or MODERATOR role to a ServerRoom.",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "roomName": { "type": "string" },
+        "assignedRole": { "type": "string", "enum": ["ADMIN", "MODERATOR"] },
+        "ownerUid": { "type": "string" },
+        "createdByUid": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "maxUses": { "type": "integer" },
+        "usedCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomId", "roomName", "assignedRole", "ownerUid", "createdByUid", "isActive", "maxUses", "usedCount", "createdAt", "updatedAt"]
+    },
+    "ServerInvite": {
+      "title": "ServerInvite",
+      "description": "Player-facing server directory listing and invite code entry.",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "serverName": { "type": "string" },
+        "motd": { "type": "string" },
+        "edition": { "type": "string", "enum": ["BEDROCK", "JAVA"] },
+        "software": { "type": "string" },
+        "minecraftVersion": { "type": "string" },
+        "hostAddress": { "type": "string" },
+        "port": { "type": "integer" },
+        "isOnline": { "type": "boolean" },
+        "isPublic": { "type": "boolean" },
+        "playerCount": { "type": "integer" },
+        "maxPlayers": { "type": "integer" },
+        "gamemode": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomId", "ownerUid", "ownerName", "serverName", "edition", "hostAddress", "port", "isOnline", "isPublic", "playerCount", "maxPlayers", "createdAt", "updatedAt"]
+    },
+    "JoinedServer": {
+      "title": "JoinedServer",
+      "description": "Bookmarked friend server saved to a user's personal list.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "inviteCode": { "type": "string" },
+        "serverName": { "type": "string" },
+        "edition": { "type": "string", "enum": ["BEDROCK", "JAVA"] },
+        "hostAddress": { "type": "string" },
+        "port": { "type": "integer" },
+        "ownerName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "inviteCode", "serverName", "edition", "hostAddress", "port", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/serverRooms/{roomId}": {
+      "schema": { "$ref": "#/entities/ServerRoom" },
+      "description": "Shared Minecraft server rooms managed by Owners, Admins, and Moderators."
+    },
+    "/serverRooms/{roomId}/adminConfig/{configId}": {
+      "schema": { "$ref": "#/entities/RoomRconConfig" },
+      "description": "Isolated RCON configuration accessible only to Owners and Admins."
+    },
+    "/serverRooms/{roomId}/members/{memberUid}": {
+      "schema": { "$ref": "#/entities/RoomMember" },
+      "description": "Staff membership records for a server room."
+    },
+    "/serverRooms/{roomId}/packs/{packId}": {
+      "schema": { "$ref": "#/entities/RoomPack" },
+      "description": "Resource packs, behavior packs, mods, plugins, and datapacks attached to a server room."
+    },
+    "/serverRooms/{roomId}/backups/{backupId}": {
+      "schema": { "$ref": "#/entities/WorldBackup" },
+      "description": "Saved world configuration and seed snapshots."
+    },
+    "/serverRooms/{roomId}/commands/{cmdId}": {
+      "schema": { "$ref": "#/entities/RoomCommand" },
+      "description": "Command relay queue for delegated Admin and Moderator control."
+    },
+    "/roleGrants/{grantCode}": {
+      "schema": { "$ref": "#/entities/RoleGrant" },
+      "description": "Role access tokens allowing trusted users to join a ServerRoom as Admin or Moderator."
+    },
+    "/invites/{inviteCode}": {
+      "schema": { "$ref": "#/entities/ServerInvite" },
+      "description": "Cloud directory and friend invite codes for joining multiplayer servers."
+    },
+    "/users/{userId}/joinedServers/{inviteCode}": {
+      "schema": { "$ref": "#/entities/JoinedServer" },
+      "description": "User's bookmarked friend servers."
+    }
+  }
+}

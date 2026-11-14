@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <external-files-path
+        name="mc_downloads"
+        path="Download/" />
+    <cache-path
+        name="mc_pack_cache"
+        path="packs/" />
+</paths>

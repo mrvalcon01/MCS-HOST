@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">MCS-HOST</string>
+    <string name="notification_channel_host">MCS-HOST Server</string>
+    <string name="auth_subtitle">Free Hybrid Server Host &amp; Multiplayer Command Center</string>
+    <string name="sign_in_google">Sign in with Google</string>
+    <string name="nav_server">Server</string>
+    <string name="nav_console">Console</string>
+    <string name="nav_players">Players</string>
+    <string name="nav_packs">Packs</string>
+    <string name="nav_worlds">Worlds</string>
+    <string name="nav_friends">Friends</string>
+    <string name="cd_hero_banner">MCS-HOST server core illustration</string>
+    <string name="cd_copy_action">Copy to clipboard</string>
+    <string name="cd_refresh_action">Refresh status</string>
+    <string name="cd_sign_out">Sign out</string>
+</resources>

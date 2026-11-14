@@ -1,0 +1,491 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function roomDoc(roomId) {
+      return get(/databases/$(database)/documents/serverRooms/$(roomId)).data;
+    }
+
+    function roomExists(roomId) {
+      return exists(/databases/$(database)/documents/serverRooms/$(roomId));
+    }
+
+    function isRoomOwner(data) {
+      return isSignedIn() && data.ownerUid == request.auth.uid;
+    }
+
+    function isRoomAdmin(data) {
+      return isSignedIn() && (
+        data.ownerUid == request.auth.uid ||
+        (request.auth.uid in data.staffUids && data.staffRoles[request.auth.uid] in ['OWNER', 'ADMIN'])
+      );
+    }
+
+    function isRoomModerator(data) {
+      return isSignedIn() &&
+        request.auth.uid in data.staffUids &&
+        data.staffRoles[request.auth.uid] == 'MODERATOR';
+    }
+
+    function isRoomStaff(data) {
+      return isSignedIn() && (
+        data.ownerUid == request.auth.uid ||
+        request.auth.uid in data.staffUids
+      );
+    }
+
+    function isRoomOwnerById(roomId) {
+      return roomExists(roomId) && isRoomOwner(roomDoc(roomId));
+    }
+
+    function isRoomAdminById(roomId) {
+      return roomExists(roomId) && isRoomAdmin(roomDoc(roomId));
+    }
+
+    function isRoomStaffById(roomId) {
+      return roomExists(roomId) && isRoomStaff(roomDoc(roomId));
+    }
+
+    // --- Validation Helpers (lean expression count) ---
+
+    function isValidServerRoom(data) {
+      return data.keys().hasAll([
+          'ownerUid', 'staffUids', 'staffRoles', 'name', 'mode', 'edition',
+          'software', 'minecraftVersion', 'host', 'port', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerUid', 'staffUids', 'staffRoles', 'name', 'motd', 'mode', 'edition',
+          'software', 'minecraftVersion', 'host', 'port', 'seed', 'seedNumeric',
+          'seedLabel', 'gamemode', 'difficulty', 'maxPlayers', 'viewDistance',
+          'simulationDistance', 'pvp', 'hardcore', 'allowCheats', 'commandBlocks',
+          'onlineMode', 'whitelistEnabled', 'resourcePackRequired', 'keepInventory',
+          'mobGriefing', 'doDaylightCycle', 'doWeatherCycle', 'naturalRegeneration',
+          'operators', 'whitelist', 'bannedPlayers', 'inviteCode',
+          'isPublicInDirectory', 'isOnline', 'playerCount', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.ownerUid) &&
+        data.staffUids is list && data.staffUids.size() >= 1 && data.staffUids.size() <= 20 &&
+        data.ownerUid in data.staffUids &&
+        data.staffRoles is map && data.staffRoles.size() <= 20 &&
+        data.staffRoles[data.ownerUid] == 'OWNER' &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+        data.mode in ['LOCAL_BEDROCK', 'REMOTE_RCON'] &&
+        data.edition in ['BEDROCK', 'JAVA'] &&
+        data.software in ['BEDROCK_HOST', 'VANILLA', 'PAPER', 'PURPUR', 'FABRIC', 'FORGE', 'BEDROCK_DEDICATED'] &&
+        data.minecraftVersion is string && data.minecraftVersion.size() >= 1 && data.minecraftVersion.size() <= 24 &&
+        data.host is string && data.host.size() >= 1 && data.host.size() <= 128 &&
+        data.port is int && data.port >= 1 && data.port <= 65535 &&
+        (!('maxPlayers' in data) || (data.maxPlayers is int && data.maxPlayers >= 1 && data.maxPlayers <= 200)) &&
+        (!('gamemode' in data) || data.gamemode in ['SURVIVAL', 'CREATIVE', 'ADVENTURE', 'SPECTATOR']) &&
+        (!('difficulty' in data) || data.difficulty in ['PEACEFUL', 'EASY', 'NORMAL', 'HARD']) &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidRconConfig(data) {
+      return data.keys().hasAll(['ownerUid', 'rconPort', 'rconPassword', 'updatedAt']) &&
+        data.keys().hasOnly(['ownerUid', 'rconPort', 'rconPassword', 'updatedAt']) &&
+        isValidId(data.ownerUid) &&
+        data.rconPort is int && data.rconPort >= 1 && data.rconPort <= 65535 &&
+        data.rconPassword is string && data.rconPassword.size() <= 128 &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidRoomMember(data) {
+      return data.keys().hasAll(['memberUid', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['memberUid', 'displayName', 'role', 'grantCode', 'createdAt', 'updatedAt']) &&
+        isValidId(data.memberUid) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 60 &&
+        data.role in ['OWNER', 'ADMIN', 'MODERATOR'] &&
+        (!('grantCode' in data) || (data.grantCode is string && data.grantCode.size() <= 32)) &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isGrantMatchingMember(grant, grantAfter, roomId, role) {
+      return grant.isActive == true &&
+        grant.roomId == roomId &&
+        grant.assignedRole == role &&
+        grant.usedCount < grant.maxUses &&
+        grantAfter.usedCount == grant.usedCount + 1;
+    }
+
+    function isValidRoomPack(data) {
+      return data.keys().hasAll([
+          'title', 'packType', 'source', 'isEnabled', 'isRequired',
+          'priority', 'addedByUid', 'addedByName', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'title', 'packType', 'source', 'modrinthProjectId', 'versionNumber',
+          'downloadUrl', 'iconUrl', 'fileName', 'sha256', 'loader',
+          'isEnabled', 'isRequired', 'priority', 'addedByUid', 'addedByName',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 100 &&
+        data.packType in ['RESOURCE_PACK', 'BEHAVIOR_PACK', 'MOD', 'PLUGIN', 'DATAPACK'] &&
+        data.source in ['MODRINTH', 'LOCAL_FILE'] &&
+        (!('modrinthProjectId' in data) || (data.modrinthProjectId is string && data.modrinthProjectId.size() <= 48)) &&
+        (!('versionNumber' in data) || (data.versionNumber is string && data.versionNumber.size() <= 48)) &&
+        (!('downloadUrl' in data) || (data.downloadUrl is string && data.downloadUrl.size() <= 512)) &&
+        (!('iconUrl' in data) || (data.iconUrl is string && data.iconUrl.size() <= 512)) &&
+        (!('fileName' in data) || (data.fileName is string && data.fileName.size() <= 128)) &&
+        (!('sha256' in data) || (data.sha256 is string && data.sha256.size() <= 64)) &&
+        (!('loader' in data) || (data.loader is string && data.loader.size() <= 32)) &&
+        data.isEnabled is bool &&
+        data.isRequired is bool &&
+        data.priority is int && data.priority >= 0 && data.priority <= 1000 &&
+        isValidId(data.addedByUid) &&
+        data.addedByName is string && data.addedByName.size() >= 1 && data.addedByName.size() <= 60 &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidWorldBackup(data) {
+      return data.keys().hasAll([
+          'name', 'seed', 'seedNumeric', 'minecraftVersion', 'software',
+          'gamemode', 'difficulty', 'packCount', 'createdByUid', 'createdByName', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'name', 'seed', 'seedNumeric', 'minecraftVersion', 'software',
+          'gamemode', 'difficulty', 'packCount', 'createdByUid', 'createdByName', 'createdAt'
+        ]) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+        data.seed is string && data.seed.size() <= 64 &&
+        data.seedNumeric is int &&
+        data.minecraftVersion is string && data.minecraftVersion.size() >= 1 && data.minecraftVersion.size() <= 24 &&
+        data.software is string && data.software.size() >= 1 && data.software.size() <= 32 &&
+        data.gamemode in ['SURVIVAL', 'CREATIVE', 'ADVENTURE', 'SPECTATOR'] &&
+        data.difficulty in ['PEACEFUL', 'EASY', 'NORMAL', 'HARD'] &&
+        data.packCount is int && data.packCount >= 0 && data.packCount <= 500 &&
+        isValidId(data.createdByUid) &&
+        data.createdByName is string && data.createdByName.size() >= 1 && data.createdByName.size() <= 60 &&
+        data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidRoomCommand(data) {
+      return data.keys().hasAll([
+          'senderUid', 'senderName', 'senderRole', 'command', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'senderUid', 'senderName', 'senderRole', 'command', 'status', 'response', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.senderUid) &&
+        data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 60 &&
+        data.senderRole in ['OWNER', 'ADMIN', 'MODERATOR'] &&
+        data.command is string && data.command.size() >= 1 && data.command.size() <= 256 &&
+        data.status in ['PENDING', 'EXECUTED', 'REJECTED'] &&
+        (!('response' in data) || (data.response is string && data.response.size() <= 512)) &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidRoleGrant(data) {
+      return data.keys().hasAll([
+          'roomId', 'roomName', 'assignedRole', 'ownerUid', 'createdByUid',
+          'isActive', 'maxUses', 'usedCount', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'roomId', 'roomName', 'assignedRole', 'ownerUid', 'createdByUid',
+          'isActive', 'maxUses', 'usedCount', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.roomId) &&
+        data.roomName is string && data.roomName.size() >= 1 && data.roomName.size() <= 60 &&
+        data.assignedRole in ['ADMIN', 'MODERATOR'] &&
+        isValidId(data.ownerUid) &&
+        isValidId(data.createdByUid) &&
+        data.isActive is bool &&
+        data.maxUses is int && data.maxUses >= 1 && data.maxUses <= 50 &&
+        data.usedCount is int && data.usedCount >= 0 && data.usedCount <= data.maxUses &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidServerInvite(data) {
+      return data.keys().hasAll([
+          'roomId', 'ownerUid', 'ownerName', 'serverName', 'edition',
+          'hostAddress', 'port', 'isOnline', 'isPublic', 'playerCount',
+          'maxPlayers', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'roomId', 'ownerUid', 'ownerName', 'serverName', 'motd', 'edition',
+          'software', 'minecraftVersion', 'hostAddress', 'port', 'isOnline',
+          'isPublic', 'playerCount', 'maxPlayers', 'gamemode', 'difficulty',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.roomId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 60 &&
+        data.serverName is string && data.serverName.size() >= 1 && data.serverName.size() <= 60 &&
+        (!('motd' in data) || (data.motd is string && data.motd.size() <= 120)) &&
+        data.edition in ['BEDROCK', 'JAVA'] &&
+        (!('software' in data) || (data.software is string && data.software.size() <= 32)) &&
+        (!('minecraftVersion' in data) || (data.minecraftVersion is string && data.minecraftVersion.size() <= 24)) &&
+        data.hostAddress is string && data.hostAddress.size() >= 1 && data.hostAddress.size() <= 128 &&
+        data.port is int && data.port >= 1 && data.port <= 65535 &&
+        data.isOnline is bool &&
+        data.isPublic is bool &&
+        data.playerCount is int && data.playerCount >= 0 && data.playerCount <= 200 &&
+        data.maxPlayers is int && data.maxPlayers >= 1 && data.maxPlayers <= 200 &&
+        (!('gamemode' in data) || data.gamemode in ['SURVIVAL', 'CREATIVE', 'ADVENTURE', 'SPECTATOR']) &&
+        (!('difficulty' in data) || data.difficulty in ['PEACEFUL', 'EASY', 'NORMAL', 'HARD']) &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidJoinedServer(data) {
+      return data.keys().hasAll([
+          'userId', 'inviteCode', 'serverName', 'edition', 'hostAddress', 'port', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'userId', 'inviteCode', 'serverName', 'edition', 'hostAddress', 'port', 'ownerName', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.userId) &&
+        isValidId(data.inviteCode) &&
+        data.serverName is string && data.serverName.size() >= 1 && data.serverName.size() <= 60 &&
+        data.edition in ['BEDROCK', 'JAVA'] &&
+        data.hostAddress is string && data.hostAddress.size() >= 1 && data.hostAddress.size() <= 128 &&
+        data.port is int && data.port >= 1 && data.port <= 65535 &&
+        (!('ownerName' in data) || (data.ownerName is string && data.ownerName.size() <= 60)) &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // --- Collection Match Blocks ---
+
+    match /serverRooms/{roomId} {
+      allow get: if isValidId(roomId) && isRoomStaff(existing());
+      allow list: if isSignedIn() && request.auth.uid in resource.data.staffUids;
+
+      allow create: if isValidId(roomId) &&
+                       isSignedIn() &&
+                       incoming().ownerUid == request.auth.uid &&
+                       incoming().staffUids.size() == 1 &&
+                       incoming().staffRoles.size() == 1 &&
+                       incoming().staffRoles[request.auth.uid] == 'OWNER' &&
+                       isValidServerRoom(incoming());
+
+      allow update: if isValidId(roomId) &&
+                       isSignedIn() &&
+                       incoming().ownerUid == existing().ownerUid &&
+                       incoming().createdAt == existing().createdAt && (
+                         // 1. Atomic Role Grant claim by joining staff member
+                         (!(request.auth.uid in existing().staffUids) &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['staffUids', 'staffRoles', 'updatedAt']) &&
+                          incoming().staffUids.size() == existing().staffUids.size() + 1 &&
+                          incoming().staffUids.hasAll(existing().staffUids) &&
+                          request.auth.uid in incoming().staffUids &&
+                          incoming().staffRoles[existing().ownerUid] == 'OWNER' &&
+                          incoming().staffRoles[request.auth.uid] in ['ADMIN', 'MODERATOR'] &&
+                          incoming().updatedAt is timestamp && incoming().updatedAt <= request.time &&
+                          getAfter(/databases/$(database)/documents/serverRooms/$(roomId)/members/$(request.auth.uid)).data.role == incoming().staffRoles[request.auth.uid]) ||
+                         // 2. Owner or Admin: full room/world update (Admins blocked from staff/owner keys)
+                         (isRoomAdmin(existing()) &&
+                          isValidServerRoom(incoming()) &&
+                          incoming().staffRoles[existing().ownerUid] == 'OWNER' &&
+                          (isRoomOwner(existing()) ||
+                           !incoming().diff(existing()).affectedKeys().hasAny([
+                             'ownerUid', 'staffUids', 'staffRoles', 'createdAt'
+                           ]))) ||
+                         // 3. Moderator: player moderation & roster lists only
+                         (isRoomModerator(existing()) &&
+                          incoming().diff(existing()).affectedKeys().hasOnly([
+                            'whitelist', 'bannedPlayers', 'playerCount', 'updatedAt'
+                          ]) &&
+                          incoming().updatedAt is timestamp && incoming().updatedAt <= request.time)
+                       );
+
+      allow delete: if isValidId(roomId) && isRoomOwner(existing());
+
+      // Isolated RCON secrets (Owner + Admin only, hidden from Moderators)
+      match /adminConfig/{configId} {
+        allow get, list: if isValidId(roomId) && isRoomAdminById(roomId);
+        allow create: if isValidId(roomId) && isValidId(configId) &&
+                         isRoomAdminById(roomId) &&
+                         incoming().ownerUid == roomDoc(roomId).ownerUid &&
+                         isValidRconConfig(incoming());
+        allow update: if isValidId(roomId) && isValidId(configId) &&
+                         isRoomAdminById(roomId) &&
+                         incoming().ownerUid == existing().ownerUid &&
+                         isValidRconConfig(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['rconPort', 'rconPassword', 'updatedAt']);
+        allow delete: if isValidId(roomId) && isValidId(configId) && isRoomOwnerById(roomId);
+      }
+
+      // Room staff members
+      match /members/{memberUid} {
+        allow get, list: if isValidId(roomId) && isRoomStaffById(roomId);
+
+        allow create: if isValidId(roomId) && isValidId(memberUid) && isSignedIn() &&
+                         incoming().memberUid == memberUid &&
+                         isValidRoomMember(incoming()) && (
+                           (request.auth.uid == memberUid &&
+                            incoming().role in ['ADMIN', 'MODERATOR'] &&
+                            'grantCode' in incoming() &&
+                            isValidId(incoming().grantCode) &&
+                            isGrantMatchingMember(
+                              get(/databases/$(database)/documents/roleGrants/$(incoming().grantCode)).data,
+                              getAfter(/databases/$(database)/documents/roleGrants/$(incoming().grantCode)).data,
+                              roomId,
+                              incoming().role
+                            )) ||
+                           (isRoomOwnerById(roomId) &&
+                            (memberUid != roomDoc(roomId).ownerUid || incoming().role == 'OWNER'))
+                         );
+
+        allow update: if isValidId(roomId) && isValidId(memberUid) &&
+                         isRoomOwnerById(roomId) &&
+                         memberUid != roomDoc(roomId).ownerUid &&
+                         incoming().memberUid == existing().memberUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().role in ['ADMIN', 'MODERATOR'] &&
+                         isValidRoomMember(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt']);
+
+        allow delete: if isValidId(roomId) && isValidId(memberUid) && isSignedIn() && (
+                         (isRoomOwnerById(roomId) && memberUid != roomDoc(roomId).ownerUid) ||
+                         (request.auth.uid == memberUid && existing().role != 'OWNER')
+                       );
+      }
+
+      // Mods, Plugins, Resource Packs, Behavior Packs, Datapacks (Owner, Admin & Moderator can modify)
+      match /packs/{packId} {
+        allow get, list: if isValidId(roomId) && isRoomStaffById(roomId);
+        allow create: if isValidId(roomId) && isValidId(packId) &&
+                         isRoomStaffById(roomId) &&
+                         incoming().addedByUid == request.auth.uid &&
+                         isValidRoomPack(incoming());
+        allow update: if isValidId(roomId) && isValidId(packId) &&
+                         isRoomStaffById(roomId) &&
+                         incoming().addedByUid == existing().addedByUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidRoomPack(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'isEnabled', 'isRequired', 'priority', 'versionNumber', 'updatedAt'
+                         ]);
+        allow delete: if isValidId(roomId) && isValidId(packId) && isRoomStaffById(roomId);
+      }
+
+      // World configuration & seed snapshots
+      match /backups/{backupId} {
+        allow get, list: if isValidId(roomId) && isRoomStaffById(roomId);
+        allow create: if isValidId(roomId) && isValidId(backupId) &&
+                         isRoomAdminById(roomId) &&
+                         incoming().createdByUid == request.auth.uid &&
+                         isValidWorldBackup(incoming());
+        allow delete: if isValidId(roomId) && isValidId(backupId) && isRoomAdminById(roomId);
+      }
+
+      // Remote / Delegated command relay queue
+      match /commands/{cmdId} {
+        allow get, list: if isValidId(roomId) && isRoomStaffById(roomId);
+        allow create: if isValidId(roomId) && isValidId(cmdId) &&
+                         isRoomStaffById(roomId) &&
+                         incoming().senderUid == request.auth.uid &&
+                         incoming().senderRole == roomDoc(roomId).staffRoles[request.auth.uid] &&
+                         incoming().status == 'PENDING' &&
+                         isValidRoomCommand(incoming());
+        allow update: if isValidId(roomId) && isValidId(cmdId) &&
+                         isRoomAdminById(roomId) &&
+                         incoming().senderUid == existing().senderUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidRoomCommand(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'response', 'updatedAt']);
+        allow delete: if isValidId(roomId) && isValidId(cmdId) && isRoomAdminById(roomId);
+      }
+    }
+
+    // Role Access Grants
+    match /roleGrants/{grantCode} {
+      allow get: if isValidId(grantCode) && isSignedIn();
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+
+      allow create: if isValidId(grantCode) && isSignedIn() &&
+                       incoming().createdByUid == request.auth.uid &&
+                       isValidRoleGrant(incoming()) &&
+                       roomExists(incoming().roomId) &&
+                       incoming().ownerUid == roomDoc(incoming().roomId).ownerUid && (
+                         isRoomOwnerById(incoming().roomId) ||
+                         (isRoomAdminById(incoming().roomId) && incoming().assignedRole == 'MODERATOR')
+                       );
+
+      allow update: if isValidId(grantCode) && isSignedIn() &&
+                       isValidRoleGrant(incoming()) &&
+                       incoming().roomId == existing().roomId &&
+                       incoming().ownerUid == existing().ownerUid &&
+                       incoming().createdByUid == existing().createdByUid &&
+                       incoming().assignedRole == existing().assignedRole &&
+                       incoming().createdAt == existing().createdAt && (
+                         (existing().ownerUid == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'maxUses', 'updatedAt'])) ||
+                         (existing().isActive == true &&
+                          existing().usedCount < existing().maxUses &&
+                          incoming().usedCount == existing().usedCount + 1 &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['usedCount', 'updatedAt']) &&
+                          existsAfter(/databases/$(database)/documents/serverRooms/$(existing().roomId)/members/$(request.auth.uid)))
+                       );
+
+      allow delete: if isValidId(grantCode) && isSignedIn() && existing().ownerUid == request.auth.uid;
+    }
+
+    // Player-facing Cloud Server Directory & Friend Invites
+    match /invites/{inviteCode} {
+      allow get: if isValidId(inviteCode) && isSignedIn();
+      allow list: if isSignedIn() && (resource.data.isPublic == true || resource.data.ownerUid == request.auth.uid);
+
+      allow create: if isValidId(inviteCode) && isSignedIn() &&
+                       incoming().ownerUid == request.auth.uid &&
+                       isRoomAdminById(incoming().roomId) &&
+                       isValidServerInvite(incoming());
+
+      allow update: if isValidId(inviteCode) && isSignedIn() &&
+                       isValidServerInvite(incoming()) &&
+                       incoming().roomId == existing().roomId &&
+                       incoming().ownerUid == existing().ownerUid &&
+                       incoming().createdAt == existing().createdAt && (
+                         existing().ownerUid == request.auth.uid ||
+                         isRoomAdminById(existing().roomId)
+                       );
+
+      allow delete: if isValidId(inviteCode) && isSignedIn() && (
+                       existing().ownerUid == request.auth.uid ||
+                       isRoomOwnerById(existing().roomId)
+                     );
+    }
+
+    // Personal saved friend servers
+    match /users/{userId}/joinedServers/{inviteCode} {
+      allow get, list: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isValidId(inviteCode) && isSignedIn() && request.auth.uid == userId &&
+                       incoming().userId == userId &&
+                       isValidJoinedServer(incoming());
+      allow update: if isValidId(inviteCode) && isSignedIn() && request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidJoinedServer(incoming());
+      allow delete: if isValidId(inviteCode) && isSignedIn() && request.auth.uid == userId;
+    }
+  }
+}
